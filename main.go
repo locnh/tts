@@ -38,6 +38,7 @@ func main() {
 	r := gin.Default()
 	r.POST("/raw", returnRaw(true))
 	r.POST("/embeded", returnRaw(false))
+	r.POST("/json", returnJSON)
 	r.Run()
 }
 
@@ -127,8 +128,6 @@ func returnRaw(raw bool) func(c *gin.Context) {
 		content, _ := ioutil.ReadAll(c.Request.Body)
 		chunks := stringFilet(string(content), 2000)
 
-		fmt.Printf("%#v", chunks)
-
 		arrAudio := []string{}
 
 		for _, v := range chunks {
@@ -148,5 +147,28 @@ func returnRaw(raw bool) func(c *gin.Context) {
 			embededHTML = embededHTML + "</audio>"
 			c.String(http.StatusOK, embededHTML)
 		}
+	}
+}
+
+func returnJSON(c *gin.Context) {
+	content, _ := ioutil.ReadAll(c.Request.Body)
+	chunks := stringFilet(string(content), 2000)
+
+	fmt.Printf("%#v", chunks)
+
+	arrAudio := []string{}
+
+	for _, v := range chunks {
+		url := getRawAudioLink(v)
+		if url != "" {
+			arrAudio = append(arrAudio, url)
+		}
+	}
+
+	json, err := json.MarshalIndent(arrAudio, "", "  ")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Server Internal Error"})
+	} else {
+		c.String(200, "%s", json)
 	}
 }
