@@ -154,8 +154,6 @@ func returnJSON(c *gin.Context) {
 	content, _ := ioutil.ReadAll(c.Request.Body)
 	chunks := stringFilet(string(content), 2000)
 
-	fmt.Printf("%#v", chunks)
-
 	arrAudio := []string{}
 
 	for _, v := range chunks {
