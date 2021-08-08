@@ -36,8 +36,8 @@ type ZaloTTSData struct {
 
 func main() {
 	r := gin.Default()
-	r.POST("/raw", returnRaw)
-	r.POST("/embeded", returnHTMLEmbedded)
+	r.POST("/raw", returnRaw(true))
+	r.POST("/embeded", returnRaw(false))
 	r.Run()
 }
 
@@ -101,24 +101,21 @@ func getRawAudioLink(payload string) string {
 	}
 }
 
-func returnRaw(c *gin.Context) {
-	content, _ := ioutil.ReadAll(c.Request.Body)
-	url := getRawAudioLink(purifier(string(content)))
-	if url != "" {
-		c.String(http.StatusOK, url)
-	} else {
-		c.JSON(http.StatusInternalServerError, "InternalServerError")
-	}
-}
+func returnRaw(raw bool) func(c *gin.Context) {
+	return func(c *gin.Context) {
+		content, _ := ioutil.ReadAll(c.Request.Body)
+		url := getRawAudioLink(purifier(string(content)))
 
-func returnHTMLEmbedded(c *gin.Context) {
-	content, _ := ioutil.ReadAll(c.Request.Body)
-	url := getRawAudioLink(purifier(string(content)))
-	if url != "" {
-		c.String(http.StatusOK,
-			"<audio controls autoplay><source src=\"%s\" type=\"audio/mpeg\"></audio>",
-			url)
-	} else {
-		c.JSON(http.StatusInternalServerError, "InternalServerError")
+		if url != "" {
+			if raw {
+				c.String(http.StatusOK, url)
+			} else {
+				c.String(http.StatusOK,
+					"<audio controls autoplay><source src=\"%s\" type=\"audio/mpeg\"></audio>",
+					url)
+			}
+		} else {
+			c.JSON(http.StatusInternalServerError, "InternalServerError")
+		}
 	}
 }
