@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -14,7 +15,6 @@ import (
 )
 
 const (
-	ZALO_CREDITS     = "Đọc bởi ZALO TTS"
 	ZALO_AI_ENDPOINT = "https://api.zalo.ai/v1/tts/synthesize"
 )
 
@@ -55,19 +55,40 @@ func init() {
 		zalo_speaker_id = "1"
 	}
 
-	_, provided = os.LookupEnv("ZALO_SPEAKER_ID")
+	_, provided = os.LookupEnv("ZALO_SPEAKER_SPEED")
 	if !provided {
 		speak_speed = "0.8"
 	}
 }
 
-func purifier(content string) string {
-	return strip.StripTags(content)
+func stringPurify(content string) string {
+	content = strip.StripTags(content)
+	content = strings.ReplaceAll(content, ".", ". ")
+
+	return content
+}
+
+func stringFilet(content string, maxLength int) []string {
+	slices := strings.Fields(stringPurify(content))
+	arrChunk := []string{}
+	chunk := ""
+
+	for _, v := range slices {
+		if len(chunk+strings.TrimSpace(v)) < maxLength {
+			chunk = chunk + " " + v
+		} else {
+			arrChunk = append(arrChunk, strings.TrimSpace(chunk))
+			chunk = v
+		}
+	}
+	arrChunk = append(arrChunk, strings.TrimSpace(chunk))
+
+	return arrChunk
 }
 
 func getRawAudioLink(payload string) string {
 	params := url.Values{}
-	params.Add("input", payload+ZALO_CREDITS)
+	params.Add("input", payload)
 	params.Add("speaker_id", zalo_speaker_id)
 	params.Add("speed", speak_speed)
 	body := strings.NewReader(params.Encode())
@@ -104,18 +125,28 @@ func getRawAudioLink(payload string) string {
 func returnRaw(raw bool) func(c *gin.Context) {
 	return func(c *gin.Context) {
 		content, _ := ioutil.ReadAll(c.Request.Body)
-		url := getRawAudioLink(purifier(string(content)))
+		chunks := stringFilet(string(content), 2000)
 
-		if url != "" {
-			if raw {
-				c.String(http.StatusOK, url)
-			} else {
-				c.String(http.StatusOK,
-					"<audio controls autoplay><source src=\"%s\" type=\"audio/mpeg\"></audio>",
-					url)
+		fmt.Printf("%#v", chunks)
+
+		arrAudio := []string{}
+
+		for _, v := range chunks {
+			url := getRawAudioLink(v)
+			if url != "" {
+				arrAudio = append(arrAudio, url)
 			}
+		}
+
+		if raw {
+			c.String(http.StatusOK, arrAudio[0])
 		} else {
-			c.JSON(http.StatusInternalServerError, "InternalServerError")
+			embededHTML := "<audio autoplay>"
+			for i, url := range arrAudio {
+				embededHTML = embededHTML + fmt.Sprintf("<source src=\"%s\" data-track-number=\"%d\" />", url, i)
+			}
+			embededHTML = embededHTML + "</audio>"
+			c.String(http.StatusOK, embededHTML)
 		}
 	}
 }

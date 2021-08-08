@@ -26,6 +26,15 @@ POST /embeded -d 'Xin chào Việt Nam'
 ```
 
 ## Usage
+### Parameters
+| Env Variable       | Mandatory | Default |
+|--------------------|-----------|---------|
+| ZALO_AI_API_KEY    | `yes`     | `null`  |
+| ZALO_SPEAKER_ID    | `no`      | `1`     |
+| ZALO_SPEAKER_SPEED | `no`      | `0.8`   |
+
+More at [https://zalo.ai/docs/api/text-to-audio-converter](https://zalo.ai/docs/api/text-to-audio-converter)
+
 ### Run a Docker container
 
 Default production mode
