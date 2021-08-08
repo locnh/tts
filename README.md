@@ -1,8 +1,6 @@
 # A Tiny Zalo TTS wrapper
 A small app written in [golang](https://golang.org) to simplify Zalo TTS integration.
 
-Live here: [enhack.net/tts](https://enhack.net/tts)
-
 These are the Docker Hub autobuild images located [here](https://hub.docker.com/r/locnh/tts/).
 
 [![License](https://img.shields.io/github/license/locnh/tts)](/LICENSE)
