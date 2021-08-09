@@ -1,8 +1,11 @@
 package main
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -12,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	strip "github.com/grokify/html-strip-tags-go"
 	log "github.com/sirupsen/logrus"
+	ffmpeg "github.com/u2takey/ffmpeg-go"
 )
 
 const (
@@ -22,6 +26,9 @@ var (
 	zalo_ai_api_key string
 	zalo_speaker_id string
 	speak_speed     string
+
+	storage_path  string
+	public_prefix string
 )
 
 type ZaloTTS struct {
@@ -59,6 +66,16 @@ func init() {
 	_, provided = os.LookupEnv("ZALO_SPEAKER_SPEED")
 	if !provided {
 		speak_speed = "0.8"
+	}
+
+	_, provided = os.LookupEnv("STORAGE_PATH")
+	if !provided {
+		storage_path = "."
+	}
+
+	_, provided = os.LookupEnv("PUBLIC_PREFIX")
+	if !provided {
+		public_prefix = "http://localhost:8080"
 	}
 }
 
@@ -151,22 +168,138 @@ func returnRaw(raw bool) func(c *gin.Context) {
 }
 
 func returnJSON(c *gin.Context) {
+	filename := processData(c)
+
+	if _, err := os.Stat(storage_path + "/" + filename + ".mp3"); os.IsNotExist(err) {
+		c.JSON(http.StatusInternalServerError,
+			gin.H{"error": "Server Internal Error"})
+	} else {
+		c.JSON(http.StatusOK,
+			gin.H{"url": public_prefix + "/" + filename + ".mp3"})
+	}
+
+}
+
+func processData(c *gin.Context) string {
 	content, _ := ioutil.ReadAll(c.Request.Body)
-	chunks := stringFilet(string(content), 2000)
 
-	arrAudio := []string{}
+	sha1HashInBytes := sha1.Sum(content)
+	filename := hex.EncodeToString(sha1HashInBytes[:])
 
-	for _, v := range chunks {
-		url := getRawAudioLink(v)
-		if url != "" {
-			arrAudio = append(arrAudio, url)
+	if _, err := os.Stat(storage_path + "/" + filename + ".mp3"); os.IsNotExist(err) {
+		chunks := stringFilet(string(content), 2000)
+		if len(chunks) > 1 {
+			for i, v := range chunks {
+				url := getRawAudioLink(v)
+				if url != "" {
+					_ = fileDownload(url, filename+"_"+fmt.Sprintf("%d", i))
+
+				}
+			}
+
+			err := mp3Concat(filename, len(chunks))
+			if err != nil {
+				log.Error(err)
+			}
+		} else {
+			url := getRawAudioLink(chunks[0])
+			if url != "" {
+				_ = fileDownload(url, filename)
+
+			}
 		}
 	}
 
-	json, err := json.MarshalIndent(arrAudio, "", "  ")
+	return filename
+}
+
+func fileDownload(url string, filename string) error {
+	wavFile := storage_path + "/" + filename + ".wav"
+
+	// Create blank file
+	file, err := os.Create(wavFile)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Server Internal Error"})
-	} else {
-		c.String(200, "%s", json)
+		log.Fatal(err)
 	}
+	client := http.Client{
+		CheckRedirect: func(r *http.Request, via []*http.Request) error {
+			r.URL.Opaque = r.URL.Path
+			return nil
+		},
+	}
+
+	// CDN 404 delay workaround
+	var retries int = 3
+	var resp *http.Response
+
+	for retries > 0 {
+		log.WithFields(log.Fields{
+			"url":   url,
+			"count": retries,
+		}).Info("Downloading...")
+
+		resp, err = client.Get(url)
+		if err != nil {
+			log.Error(err)
+		}
+		if resp.StatusCode == 200 {
+			break
+		}
+		retries -= 1
+	}
+	defer resp.Body.Close()
+
+	size, err := io.Copy(file, resp.Body)
+
+	defer file.Close()
+
+	log.WithFields(log.Fields{
+		"file": filename,
+		"size": size,
+	}).Info("Downloaded")
+
+	// Convert to mp3
+	err = wav2mp3(filename)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"file": filename,
+		}).Error(err)
+	}
+
+	// Clean up wav part
+	err = os.Remove(wavFile)
+	if err != nil {
+		log.Error(err)
+	}
+
+	return err
+}
+
+func mp3Concat(filename string, parts int) error {
+	Streams := []*ffmpeg.Stream{}
+	for i := 0; i < parts; i++ {
+		Streams = append(Streams, ffmpeg.Input(storage_path+"/"+filename+"_"+fmt.Sprintf("%d", i)+".mp3"))
+	}
+	err := ffmpeg.Concat(Streams, ffmpeg.KwArgs{"v": 0, "a": 1}).
+		Output(storage_path + "/" + filename + ".mp3").
+		OverWriteOutput().
+		Run()
+
+	if err == nil {
+		for i := 0; i < parts; i++ {
+			err := os.Remove(storage_path + "/" + filename + "_" + fmt.Sprintf("%d", i) + ".mp3")
+			if err != nil {
+				log.Error(err)
+			}
+		}
+	}
+	return err
+}
+
+func wav2mp3(filename string) error {
+	err := ffmpeg.Input(storage_path+"/"+filename+".wav").
+		Output(storage_path+"/"+filename+".mp3", ffmpeg.KwArgs{"ar": 44100, "ac": 2, "b:a": "128k"}).
+		OverWriteOutput().
+		Run()
+	return err
 }
