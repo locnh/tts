@@ -11,7 +11,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o zalotts .
 
 
-FROM alpine
+FROM jrottenberg/ffmpeg
 
 COPY --from=builder /app/zalotts /zalotts
 

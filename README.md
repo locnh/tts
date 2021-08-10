@@ -23,13 +23,18 @@ POST /embeded -d 'Xin chào Việt Nam'
 <audio controls autoplay><source src="https://link-to-audio-file" type="audio/mpeg"></audio>
 ```
 
+## Demo
+Give it a try [Oh-my-bed](https://ohmybed.locnh.com)
+
 ## Usage
 ### Parameters
-| Env Variable       | Mandatory | Default |
-|--------------------|-----------|---------|
-| ZALO_AI_API_KEY    | `yes`     | `null`  |
-| ZALO_SPEAKER_ID    | `no`      | `1`     |
-| ZALO_SPEAKER_SPEED | `no`      | `0.8`   |
+| Env Variable       | Mandatory    | Default                   |
+|--------------------|--------------|---------------------------|
+| ZALO_AI_API_KEY    |    `yes`     | `null`                    |
+| ZALO_SPEAKER_ID    |    `no`      | `1`                       |
+| ZALO_SPEAKER_SPEED |    `no`      | `0.8`                     |
+| STORAGE_PATH       |    `no`      | `.`                       |
+| PUBLIC_PREFIX      |    `no`      | `http://localhost:8080`   |
 
 More at [https://zalo.ai/docs/api/text-to-audio-converter](https://zalo.ai/docs/api/text-to-audio-converter)
 
@@ -38,7 +43,14 @@ More at [https://zalo.ai/docs/api/text-to-audio-converter](https://zalo.ai/docs/
 Default production mode
 
 ```sh
-docker run -p 8080:8080 -e ZALO_AI_API_KEY=your-key -d locnh/tts
+docker run --name tts \
+            -p 8080:8080 \
+            -e ZALO_AI_API_KEY=$ZALO_AI_API_KEY \
+            -e PUBLIC_PREFIX="https://locnh.com/tts-stream" \
+            -e STORAGE_PATH=/media \
+            -v /tmp/media:/media \
+            --restart unless-stopped \
+            -d locnh/tts:devel
 ```
 
 or add `-e GIN_MODE=debug` to debug

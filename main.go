@@ -1,17 +1,22 @@
 package main
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	strip "github.com/grokify/html-strip-tags-go"
 	log "github.com/sirupsen/logrus"
+	ffmpeg "github.com/u2takey/ffmpeg-go"
 )
 
 const (
@@ -22,6 +27,9 @@ var (
 	zalo_ai_api_key string
 	zalo_speaker_id string
 	speak_speed     string
+
+	storage_path  string
+	public_prefix string
 )
 
 type ZaloTTS struct {
@@ -35,6 +43,13 @@ type ZaloTTSData struct {
 }
 
 func main() {
+	log.WithFields(log.Fields{
+		"zalo_speaker_id": zalo_speaker_id,
+		"speak_speed":     speak_speed,
+		"storage_path":    storage_path,
+		"public_prefix":   public_prefix,
+	}).Info("Settings")
+
 	r := gin.Default()
 	r.POST("/raw", returnRaw(true))
 	r.POST("/embeded", returnRaw(false))
@@ -51,14 +66,24 @@ func init() {
 		zalo_ai_api_key = apiKey
 	}
 
-	_, provided = os.LookupEnv("ZALO_SPEAKER_ID")
+	zalo_speaker_id, provided = os.LookupEnv("ZALO_SPEAKER_ID")
 	if !provided {
 		zalo_speaker_id = "1"
 	}
 
-	_, provided = os.LookupEnv("ZALO_SPEAKER_SPEED")
+	speak_speed, provided = os.LookupEnv("ZALO_SPEAKER_SPEED")
 	if !provided {
 		speak_speed = "0.8"
+	}
+
+	storage_path, provided = os.LookupEnv("STORAGE_PATH")
+	if !provided {
+		storage_path = "."
+	}
+
+	public_prefix, provided = os.LookupEnv("PUBLIC_PREFIX")
+	if !provided {
+		public_prefix = "http://localhost:8080"
 	}
 }
 
@@ -125,48 +150,155 @@ func getRawAudioLink(payload string) string {
 
 func returnRaw(raw bool) func(c *gin.Context) {
 	return func(c *gin.Context) {
-		content, _ := ioutil.ReadAll(c.Request.Body)
-		chunks := stringFilet(string(content), 2000)
+		filename := processData(c)
 
-		arrAudio := []string{}
-
-		for _, v := range chunks {
-			url := getRawAudioLink(v)
-			if url != "" {
-				arrAudio = append(arrAudio, url)
-			}
-		}
-
-		if raw {
-			c.String(http.StatusOK, arrAudio[0])
+		if _, err := os.Stat(storage_path + "/" + filename + ".mp3"); os.IsNotExist(err) {
+			c.JSON(http.StatusInternalServerError,
+				gin.H{"error": "Server Internal Error"})
 		} else {
-			embededHTML := "<audio autoplay>"
-			for i, url := range arrAudio {
-				embededHTML = embededHTML + fmt.Sprintf("<source src=\"%s\" data-track-number=\"%d\" />", url, i)
+			url := public_prefix + "/" + filename + ".mp3"
+			if raw {
+				c.String(http.StatusOK, "%s", url)
+			} else {
+				c.String(http.StatusOK, "<audio scr=\"%s\" controls autoplay></audio>", url)
 			}
-			embededHTML = embededHTML + "</audio>"
-			c.String(http.StatusOK, embededHTML)
 		}
 	}
 }
 
 func returnJSON(c *gin.Context) {
+	filename := processData(c)
+
+	if _, err := os.Stat(storage_path + "/" + filename + ".mp3"); os.IsNotExist(err) {
+		c.JSON(http.StatusInternalServerError,
+			gin.H{"error": "Server Internal Error"})
+	} else {
+		c.JSON(http.StatusOK,
+			gin.H{"url": public_prefix + "/" + filename + ".mp3"})
+	}
+}
+
+func processData(c *gin.Context) string {
 	content, _ := ioutil.ReadAll(c.Request.Body)
-	chunks := stringFilet(string(content), 2000)
 
-	arrAudio := []string{}
+	sha1HashInBytes := sha1.Sum(content)
+	filename := hex.EncodeToString(sha1HashInBytes[:])
 
-	for _, v := range chunks {
-		url := getRawAudioLink(v)
-		if url != "" {
-			arrAudio = append(arrAudio, url)
+	if _, err := os.Stat(storage_path + "/" + filename + ".mp3"); os.IsNotExist(err) {
+		chunks := stringFilet(string(content), 2000)
+		if len(chunks) > 1 {
+			for i, v := range chunks {
+				url := getRawAudioLink(v)
+				if url != "" {
+					_ = fileDownload(url, filename+"_"+fmt.Sprintf("%d", i))
+
+				}
+			}
+
+			err := mp3Concat(filename, len(chunks))
+			if err != nil {
+				log.Error(err)
+			}
+		} else {
+			url := getRawAudioLink(chunks[0])
+			if url != "" {
+				_ = fileDownload(url, filename)
+
+			}
 		}
 	}
 
-	json, err := json.MarshalIndent(arrAudio, "", "  ")
+	return filename
+}
+
+func fileDownload(url string, filename string) error {
+	wavFile := storage_path + "/" + filename + ".wav"
+
+	// Create blank file
+	file, err := os.Create(wavFile)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Server Internal Error"})
-	} else {
-		c.String(200, "%s", json)
+		log.Fatal(err)
 	}
+	client := http.Client{
+		CheckRedirect: func(r *http.Request, via []*http.Request) error {
+			r.URL.Opaque = r.URL.Path
+			return nil
+		},
+	}
+
+	// CDN 404 delay workaround
+	var retries int = 20
+	var resp *http.Response
+
+	for retries > 0 {
+		log.WithFields(log.Fields{
+			"url":   url,
+			"count": retries,
+		}).Info("Downloading...")
+
+		resp, err = client.Get(url)
+		if err != nil {
+			log.Error(err)
+		}
+		if resp.StatusCode == 200 {
+			break
+		}
+		retries -= 1
+		time.Sleep(500 * time.Millisecond)
+	}
+	defer resp.Body.Close()
+
+	size, err := io.Copy(file, resp.Body)
+
+	defer file.Close()
+
+	log.WithFields(log.Fields{
+		"file": filename,
+		"size": size,
+	}).Info("Downloaded")
+
+	// Convert to mp3
+	err = wav2mp3(filename)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"file": filename,
+		}).Error(err)
+	}
+
+	// Clean up wav part
+	err = os.Remove(wavFile)
+	if err != nil {
+		log.Error(err)
+	}
+
+	return err
+}
+
+func mp3Concat(filename string, parts int) error {
+	Streams := []*ffmpeg.Stream{}
+	for i := 0; i < parts; i++ {
+		Streams = append(Streams, ffmpeg.Input(storage_path+"/"+filename+"_"+fmt.Sprintf("%d", i)+".mp3"))
+	}
+	err := ffmpeg.Concat(Streams, ffmpeg.KwArgs{"v": 0, "a": 1}).
+		Output(storage_path + "/" + filename + ".mp3").
+		OverWriteOutput().
+		Run()
+
+	if err == nil {
+		for i := 0; i < parts; i++ {
+			err := os.Remove(storage_path + "/" + filename + "_" + fmt.Sprintf("%d", i) + ".mp3")
+			if err != nil {
+				log.Error(err)
+			}
+		}
+	}
+	return err
+}
+
+func wav2mp3(filename string) error {
+	err := ffmpeg.Input(storage_path+"/"+filename+".wav").
+		Output(storage_path+"/"+filename+".mp3", ffmpeg.KwArgs{"ar": 44100, "ac": 2, "b:a": "128k"}).
+		OverWriteOutput().
+		Run()
+	return err
 }
