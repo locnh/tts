@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	strip "github.com/grokify/html-strip-tags-go"
@@ -42,6 +43,13 @@ type ZaloTTSData struct {
 }
 
 func main() {
+	log.WithFields(log.Fields{
+		"zalo_speaker_id": zalo_speaker_id,
+		"speak_speed":     speak_speed,
+		"storage_path":    storage_path,
+		"public_prefix":   public_prefix,
+	}).Info("Settings")
+
 	r := gin.Default()
 	r.POST("/raw", returnRaw(true))
 	r.POST("/embeded", returnRaw(false))
@@ -58,22 +66,22 @@ func init() {
 		zalo_ai_api_key = apiKey
 	}
 
-	_, provided = os.LookupEnv("ZALO_SPEAKER_ID")
+	zalo_speaker_id, provided = os.LookupEnv("ZALO_SPEAKER_ID")
 	if !provided {
 		zalo_speaker_id = "1"
 	}
 
-	_, provided = os.LookupEnv("ZALO_SPEAKER_SPEED")
+	speak_speed, provided = os.LookupEnv("ZALO_SPEAKER_SPEED")
 	if !provided {
 		speak_speed = "0.8"
 	}
 
-	_, provided = os.LookupEnv("STORAGE_PATH")
+	storage_path, provided = os.LookupEnv("STORAGE_PATH")
 	if !provided {
 		storage_path = "."
 	}
 
-	_, provided = os.LookupEnv("PUBLIC_PREFIX")
+	public_prefix, provided = os.LookupEnv("PUBLIC_PREFIX")
 	if !provided {
 		public_prefix = "http://localhost:8080"
 	}
@@ -142,27 +150,18 @@ func getRawAudioLink(payload string) string {
 
 func returnRaw(raw bool) func(c *gin.Context) {
 	return func(c *gin.Context) {
-		content, _ := ioutil.ReadAll(c.Request.Body)
-		chunks := stringFilet(string(content), 2000)
+		filename := processData(c)
 
-		arrAudio := []string{}
-
-		for _, v := range chunks {
-			url := getRawAudioLink(v)
-			if url != "" {
-				arrAudio = append(arrAudio, url)
-			}
-		}
-
-		if raw {
-			c.String(http.StatusOK, arrAudio[0])
+		if _, err := os.Stat(storage_path + "/" + filename + ".mp3"); os.IsNotExist(err) {
+			c.JSON(http.StatusInternalServerError,
+				gin.H{"error": "Server Internal Error"})
 		} else {
-			embededHTML := "<audio autoplay>"
-			for i, url := range arrAudio {
-				embededHTML = embededHTML + fmt.Sprintf("<source src=\"%s\" data-track-number=\"%d\" />", url, i)
+			url := public_prefix + "/" + filename + ".mp3"
+			if raw {
+				c.String(http.StatusOK, "%s", url)
+			} else {
+				c.String(http.StatusOK, "<audio scr=\"%s\" controls autoplay></audio>", url)
 			}
-			embededHTML = embededHTML + "</audio>"
-			c.String(http.StatusOK, embededHTML)
 		}
 	}
 }
@@ -177,7 +176,6 @@ func returnJSON(c *gin.Context) {
 		c.JSON(http.StatusOK,
 			gin.H{"url": public_prefix + "/" + filename + ".mp3"})
 	}
-
 }
 
 func processData(c *gin.Context) string {
@@ -229,7 +227,7 @@ func fileDownload(url string, filename string) error {
 	}
 
 	// CDN 404 delay workaround
-	var retries int = 3
+	var retries int = 20
 	var resp *http.Response
 
 	for retries > 0 {
@@ -246,6 +244,7 @@ func fileDownload(url string, filename string) error {
 			break
 		}
 		retries -= 1
+		time.Sleep(500 * time.Millisecond)
 	}
 	defer resp.Body.Close()
 
