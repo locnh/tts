@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Try It Yourself</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
+    <script>
+        $(document).ready(function () {
+            $('#play').click(function (e) {
+                e.preventDefault();
+                $tts = $(this);
+                $.ajax({
+                    url: 'https://locnh.com/tts/json',
+                    type: 'POST',
+                    contentType: 'text/plain; charset=utf-8',
+                    data: $tts.siblings('#text').text()
+                }).done(function (response) {
+                    $tts.siblings('#audio').html('<audio src="' + response.url + '" autoplay controls></audio>');
+                });
+            });
+        });
+    </script>
+    <style>
+        .button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 15px 32px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+
+<textarea id="text" rows="10" cols="80">
+Ngày xửa ngày xưa, ở một ngôi làng nọ, có ba chú heo sống với nhau, một hôm có một con chó sói đi vào làng, nó đến nhà 3 chú heo và gõ cửa "Cốc cốc cốc, có ai ở nhà không, mở cửa cho ta vào", ba chú heo ra mở cửa. Từ đó không ai thấy 3 chú heo nữa!
+</textarea>
+<div id="audio"></div>
+<button id="play" class="button">Đọc</button>
+
+</body>
+</html>
