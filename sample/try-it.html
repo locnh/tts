@@ -3,6 +3,7 @@
 
 <head>
     <title>Try It Yourself</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     <script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
     <script>
         $(document).ready(function () {
@@ -13,7 +14,7 @@
                     url: 'https://locnh.com/tts/json',
                     type: 'POST',
                     contentType: 'text/plain; charset=utf-8',
-                    data: $tts.siblings('#text').text()
+                    data: $tts.siblings('#text').val()
                 }).done(function (response) {
                     $tts.siblings('#audio').html('<audio src="' + response.url + '" autoplay controls></audio>');
                 });
@@ -33,12 +34,24 @@
             margin: 4px 2px;
             cursor: pointer;
         }
+        .textarea {
+            font-size: .8rem;
+            letter-spacing: 1px;
+        }
+        .textarea {
+            padding: 10px;
+            max-width: 100%;
+            line-height: 1.5;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            box-shadow: 1px 1px 1px #999;
+        }
     </style>
 </head>
 
 <body>
 
-<textarea id="text" rows="10" cols="80">
+<textarea type="textarea" id="text" class="textarea" rows="10" cols="80">
 Ngày xửa ngày xưa, ở một ngôi làng nọ, có ba chú heo sống với nhau, một hôm có một con chó sói đi vào làng, nó đến nhà 3 chú heo và gõ cửa "Cốc cốc cốc, có ai ở nhà không, mở cửa cho ta vào", ba chú heo ra mở cửa. Từ đó không ai thấy 3 chú heo nữa!
 </textarea>
 <div id="audio"></div>
