@@ -2,7 +2,7 @@
 <html>
 
 <head>
-    <title>Page Title</title>
+    <title>Try It Yourself</title>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
     <script>
         $(document).ready(function () {
@@ -10,7 +10,7 @@
                 e.preventDefault();
                 $tts = $(this);
                 $.ajax({
-                    url: '/tts/json',
+                    url: 'https://locnh.com/tts/json',
                     type: 'POST',
                     contentType: 'text/plain; charset=utf-8',
                     data: $tts.siblings('#text').text()

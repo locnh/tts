@@ -51,7 +51,6 @@ func main() {
 	}).Info("Settings")
 
 	r := gin.Default()
-	r.StaticFile("/try-it.html", "./try-it.html")
 	r.POST("/raw", returnRaw(true))
 	r.POST("/embeded", returnRaw(false))
 	r.POST("/json", returnJSON)
