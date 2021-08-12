@@ -51,6 +51,7 @@ func main() {
 	}).Info("Settings")
 
 	r := gin.Default()
+	r.StaticFile("/try-it.html", "./try-it.html")
 	r.POST("/raw", returnRaw(true))
 	r.POST("/embeded", returnRaw(false))
 	r.POST("/json", returnJSON)
@@ -150,9 +151,10 @@ func getRawAudioLink(payload string) string {
 
 func returnRaw(raw bool) func(c *gin.Context) {
 	return func(c *gin.Context) {
-		filename := processData(c)
-
-		if _, err := os.Stat(storage_path + "/" + filename + ".mp3"); os.IsNotExist(err) {
+		if filename := processData(c); filename == "" {
+			c.JSON(http.StatusBadRequest,
+				gin.H{"error": "Payload empty"})
+		} else if _, err := os.Stat(storage_path + "/" + filename + ".mp3"); os.IsNotExist(err) {
 			c.JSON(http.StatusInternalServerError,
 				gin.H{"error": "Server Internal Error"})
 		} else {
@@ -167,9 +169,10 @@ func returnRaw(raw bool) func(c *gin.Context) {
 }
 
 func returnJSON(c *gin.Context) {
-	filename := processData(c)
-
-	if _, err := os.Stat(storage_path + "/" + filename + ".mp3"); os.IsNotExist(err) {
+	if filename := processData(c); filename == "" {
+		c.JSON(http.StatusBadRequest,
+			gin.H{"error": "Payload empty"})
+	} else if _, err := os.Stat(storage_path + "/" + filename + ".mp3"); os.IsNotExist(err) {
 		c.JSON(http.StatusInternalServerError,
 			gin.H{"error": "Server Internal Error"})
 	} else {
@@ -180,6 +183,10 @@ func returnJSON(c *gin.Context) {
 
 func processData(c *gin.Context) string {
 	content, _ := ioutil.ReadAll(c.Request.Body)
+
+	if len(content) == 0 {
+		return ""
+	}
 
 	sha1HashInBytes := sha1.Sum(content)
 	filename := hex.EncodeToString(sha1HashInBytes[:])
