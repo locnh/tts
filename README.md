@@ -1,6 +1,8 @@
 # A Tiny Zalo TTS wrapper
 A small app written in [golang](https://golang.org) to simplify Zalo TTS integration.
 
+Try it yourself, [HERE](https://locnh.com/tts/try-it.html)
+
 These are the Docker Hub autobuild images located [here](https://hub.docker.com/r/locnh/tts/).
 
 [![License](https://img.shields.io/github/license/locnh/tts)](/LICENSE)
@@ -15,6 +17,12 @@ These are the Docker Hub autobuild images located [here](https://hub.docker.com/
 POST /raw -d 'Xin chào Việt Nam'
 
 https://link-to-audio-file
+```
+
+```bash
+POST /json -d 'Xin chào Việt Nam'
+
+{ "url": "https://link-to-audio-file" }
 ```
 
 ```bash
